@@ -1,0 +1,177 @@
+language: cpp
+
+git:
+  depth: 10
+
+# sudo:required is needed for trusty images
+sudo: required
+dist: trusty
+
+notifications:
+  email: false
+
+branches:
+  only:
+    - master
+    - 5.4
+
+cache:
+  ccache: true
+  apt: true
+  directories:
+    - test/cache
+
+env:
+  global:
+   - CCACHE_TEMPDIR=/tmp/.ccache-temp
+   - CCACHE_COMPRESS=1
+   - CASHER_TIME_OUT=599 # one second less than 10m to avoid 10m timeout error: https://github.com/Project-OSRM/osrm-backend/issues/2742
+   - JOBS=4
+
+matrix:
+  fast_finish: true
+
+  # We override the compiler names here to yield better ccache behavior, which uses this as key
+  include:
+
+    # Debug Builds
+    - os: linux
+      compiler: "gcc-5-debug"
+      addons: &gcc5
+        apt:
+          sources: ['ubuntu-toolchain-r-test']
+          packages: ['g++-5', 'libbz2-dev', 'libstxxl-dev', 'libstxxl1', 'libxml2-dev', 'libzip-dev', 'lua5.1', 'liblua5.1-0-dev', 'libtbb-dev', 'libgdal-dev', 'libluabind-dev', 'libboost-all-dev', 'ccache']
+      env: CCOMPILER='gcc-5' CXXCOMPILER='g++-5' BUILD_TYPE='Debug' COVERAGE=ON
+
+    - os: linux
+      compiler: "clang-3.8-debug"
+      addons: &clang38
+        apt:
+          sources: ['ubuntu-toolchain-r-test']
+          packages: ['libstdc++-5-dev', 'libbz2-dev', 'libstxxl-dev', 'libstxxl1', 'libxml2-dev', 'libzip-dev', 'lua5.1', 'liblua5.1-0-dev', 'libtbb-dev', 'libgdal-dev', 'libluabind-dev', 'libboost-all-dev', 'ccache']
+      env: CLANG_VERSION='3.8.0' BUILD_TYPE='Debug' RUN_CLANG_FORMAT=ON
+
+    - os: osx
+      osx_image: xcode7.3
+      compiler: clang
+      env: CCOMPILER='clang' CXXCOMPILER='clang++' BUILD_TYPE='Debug' JOBS=1 CUCUMBER_TIMEOUT=60000
+
+    # Release Builds
+    - os: linux
+      compiler: "gcc-5-release"
+      addons: &gcc5
+        apt:
+          sources: ['ubuntu-toolchain-r-test']
+          packages: ['g++-5', 'libbz2-dev', 'libstxxl-dev', 'libstxxl1', 'libxml2-dev', 'libzip-dev', 'lua5.1', 'liblua5.1-0-dev', 'libtbb-dev', 'libgdal-dev', 'libluabind-dev', 'libboost-all-dev', 'ccache']
+      env: CCOMPILER='gcc-5' CXXCOMPILER='g++-5' BUILD_TYPE='Release'
+
+    - os: linux
+      compiler: "gcc-5-release-i686"
+      env: TARGET_ARCH='i686' CCOMPILER='gcc-5' CXXCOMPILER='g++-5' BUILD_TYPE='Release'
+
+      # Disabled because of CI slowness
+      #- os: linux
+      #- compiler: clang
+      #- addons: &clang38
+      #-   apt:
+      #-     sources: ['llvm-toolchain-precise-3.8', 'ubuntu-toolchain-r-test']
+      #-     packages: ['clang-3.8', 'libbz2-dev', 'libstxxl-dev', 'libstxxl1', 'libxml2-dev', 'libzip-dev', 'lua5.1', 'liblua5.1-0-dev', 'libtbb-dev', 'libgdal-dev', 'libluabind-dev', 'libboost-all-dev']
+      #- env: CCOMPILER='clang-3.8' CXXCOMPILER='clang++-3.8' BUILD_TYPE='Release'
+
+      # Disabled because of CI slowness
+      #- os: osx
+      #- osx_image: xcode7.3
+      #- compiler: clang
+      #- env: CCOMPILER='clang' CXXCOMPILER='clang++' BUILD_TYPE='Release'
+
+    # Shared Library
+    - os: linux
+      compiler: "gcc-5-release-shared"
+      addons: &gcc5
+        apt:
+          sources: ['ubuntu-toolchain-r-test']
+          packages: ['g++-5', 'libbz2-dev', 'libstxxl-dev', 'libstxxl1', 'libxml2-dev', 'libzip-dev', 'lua5.1', 'liblua5.1-0-dev', 'libtbb-dev', 'libgdal-dev', 'libluabind-dev', 'libboost-all-dev', 'ccache']
+      env: CCOMPILER='gcc-5' CXXCOMPILER='g++-5' BUILD_TYPE='Release' BUILD_SHARED_LIBS=ON
+
+      # Disabled because CI slowness
+      #- os: linux
+      #- compiler: clang
+      #- addons: &clang38
+      #-   apt:
+      #-     sources: ['llvm-toolchain-precise-3.8', 'ubuntu-toolchain-r-test']
+      #-     packages: ['clang-3.8', 'libbz2-dev', 'libstxxl-dev', 'libstxxl1', 'libxml2-dev', 'libzip-dev', 'lua5.1', 'liblua5.1-0-dev', 'libtbb-dev', 'libgdal-dev', 'libluabind-dev', 'libboost-all-dev']
+      #- env: CCOMPILER='clang-3.8' CXXCOMPILER='clang++-3.8' BUILD_TYPE='Release' BUILD_SHARED_LIBS=ON
+
+before_install:
+  - if [[ ! -z $TARGET_ARCH ]] ; then source ./scripts/travis/before_install.$TARGET_ARCH.sh ; fi
+  - if [[ $(uname -s) == 'Darwin' ]]; then sudo mdutil -i off /; fi;
+  - source ./scripts/install_node.sh 4
+  - npm install
+  - DEPS_DIR="${TRAVIS_BUILD_DIR}/deps"
+  - export PATH=${DEPS_DIR}/bin:${PATH} && mkdir -p ${DEPS_DIR}
+  - CMAKE_URL="https://mason-binaries.s3.amazonaws.com/${TRAVIS_OS_NAME}-x86_64/cmake/3.5.2.tar.gz"
+  - travis_retry wget --quiet -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C ${DEPS_DIR} || exit 1
+  - |
+    if [[ ${CLANG_VERSION:-false} != false ]]; then
+      export CCOMPILER='clang'
+      export CXXCOMPILER='clang++'
+      CLANG_URL="https://mason-binaries.s3.amazonaws.com/${TRAVIS_OS_NAME}-x86_64/clang/${CLANG_VERSION}.tar.gz"
+      travis_retry wget --quiet -O - ${CLANG_URL} | tar --strip-components=1 -xz -C ${DEPS_DIR} || exit 1
+    fi
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+      # implicit deps, but seem to be installed by default with recent images: libxml2 GDAL boost
+      brew install libzip libstxxl lua51 luabind tbb md5sha1sum ccache
+    fi
+
+install:
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      ./scripts/check_taginfo.py taginfo.json profiles/car.lua
+    fi
+  - mkdir build && pushd build
+  - export CC=${CCOMPILER} CXX=${CXXCOMPILER}
+  - cmake .. -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS:-OFF} -DCOVERAGE=${COVERAGE:-OFF} -DBUILD_TOOLS=ON -DBUILD_COMPONENTS=ON -DENABLE_CCACHE=ON
+  - echo "travis_fold:start:MAKE"
+  - make osrm-extract --jobs=3
+  - make --jobs=${JOBS}
+  - make tests --jobs=${JOBS}
+  - make benchmarks --jobs=${JOBS}
+  - echo "travis_fold:end:MAKE"
+  - ccache -s
+  - sudo make install
+  - |
+    if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      sudo ldconfig
+    fi
+  - popd
+  - mkdir example/build && pushd example/build
+  - cmake .. -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+  - make
+  - popd
+
+script:
+  - if [[ $TARGET_ARCH == armhf ]] ; then echo "Skip tests for $TARGET_ARCH" && exit 0 ; fi
+  - echo "travis_fold:start:BENCHMARK"
+  - make -C test/data benchmark
+  - echo "travis_fold:end:BENCHMARK"
+  - ./example/build/osrm-example test/data/monaco.osrm
+  # All tests assume to be run from the build directory
+  - pushd build
+  - ./unit_tests/library-tests ../test/data/monaco.osrm
+  - ./unit_tests/extractor-tests
+  - ./unit_tests/engine-tests
+  - ./unit_tests/util-tests
+  - ./unit_tests/server-tests
+  - popd
+  - npm test
+
+after_success:
+  - |
+    if [ -n "${RUN_CLANG_FORMAT}" ]; then
+      ./scripts/format.sh # we don't want to fail just yet
+    fi
+  - |
+    if [ -n "${COVERAGE}" ]; then
+      bash <(curl -s https://codecov.io/bash)
+    fi
