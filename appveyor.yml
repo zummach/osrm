@@ -28,15 +28,3 @@ artifacts:
 branches:
   only:
     - master
-
-deploy:
-  provider: FTP
-  server:
-    secure: ef7oiQTTXFGt8NdNiOHm/uRFVrUttzyFbIlnaeHhQvw=
-  username:
-    secure: Bw+Se2GTJxA6+GtRkEc//tQSBHOuFIuJHBjFwR9cD+8=
-  password:
-    secure: eqwESZqxMXC/j5mOCpaXuw==
-  folder: /
-  enable_ssl: true
-  active_mode: false
