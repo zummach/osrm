@@ -21,9 +21,9 @@ namespace engine
 namespace routing_algorithms
 {
 
-const double VIAPATH_ALPHA = 0.10;
-const double VIAPATH_EPSILON = 0.15; // alternative at most 15% longer
-const double VIAPATH_GAMMA = 0.75;   // alternative shares at most 75% with the shortest.
+const double VIAPATH_ALPHA = 0.9;
+const double VIAPATH_EPSILON = 0.95; // alternative at most 95% longer
+const double VIAPATH_GAMMA = 0.95;   // alternative shares at most 95% with the shortest.
 
 template <class DataFacadeT>
 class AlternativeRouting final
